@@ -73,43 +73,37 @@ export function useCamera() {
         throw lastError || new Error('Camera access failed with all configurations');
       }
       
+      // Wait for video element if it's not ready yet
+      if (!videoRef.current) {
+        // Retry after a short delay to handle timing issues
+        setTimeout(() => {
+          if (videoRef.current) {
+            videoRef.current.srcObject = stream;
+            videoRef.current.muted = true;
+            videoRef.current.playsInline = true;
+            videoRef.current.autoplay = true;
+            videoRef.current.play().catch(console.warn);
+          }
+        }, 100);
+      }
+      
       if (videoRef.current) {
+        // Force stop any existing stream
+        if (videoRef.current.srcObject) {
+          const existingStream = videoRef.current.srcObject as MediaStream;
+          existingStream.getTracks().forEach(track => track.stop());
+        }
+        
+        // Set the new stream
         videoRef.current.srcObject = stream;
         
-        // Add event listeners for better error handling
-        videoRef.current.onloadedmetadata = () => {
-          if (videoRef.current) {
-            videoRef.current.play().catch(err => {
-              console.warn('Video play failed:', err);
-            });
-          }
-        };
-        
-        videoRef.current.onerror = (err) => {
-          console.error('Video element error:', err);
-        };
-        
-        // Ensure autoplay and proper video setup
-        videoRef.current.autoplay = true;
-        videoRef.current.playsInline = true;
+        // Force video properties
         videoRef.current.muted = true;
+        videoRef.current.playsInline = true;
+        videoRef.current.autoplay = true;
         
-        try {
-          await videoRef.current.play();
-          console.log('Video is now playing, dimensions:', {
-            videoWidth: videoRef.current.videoWidth,
-            videoHeight: videoRef.current.videoHeight,
-            readyState: videoRef.current.readyState
-          });
-        } catch (playError) {
-          console.warn('Video play error:', playError);
-          // Try to play again after a short delay
-          setTimeout(() => {
-            if (videoRef.current) {
-              videoRef.current.play().catch(console.warn);
-            }
-          }, 100);
-        }
+        // Try to play
+        videoRef.current.play().catch(console.warn);
       }
 
       setCameraState(prev => ({

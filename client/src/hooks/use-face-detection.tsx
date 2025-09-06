@@ -13,13 +13,23 @@ export function useFaceDetection(videoElement: HTMLVideoElement | null, isActive
       return;
     }
 
+    // Check if video is actually playing and has dimensions
+    if (videoElement.readyState < 2 || videoElement.videoWidth === 0 || videoElement.videoHeight === 0) {
+      // Video not ready yet, schedule retry
+      if (isActive) {
+        animationFrameRef.current = requestAnimationFrame(detectFace);
+      }
+      return;
+    }
+
     try {
       const landmarks = await faceDetectionService.detectFace(videoElement);
       setFaceLandmarks(landmarks);
       setError(null);
     } catch (err) {
-      console.error('Face detection error:', err);
+      // Silently handle face detection errors - they're expected when no face is visible
       setError(err instanceof Error ? err.message : 'Face detection failed');
+      // Don't stop detection on errors, just continue
     }
 
     // Schedule next detection
@@ -47,7 +57,17 @@ export function useFaceDetection(videoElement: HTMLVideoElement | null, isActive
 
   useEffect(() => {
     if (isActive && isInitialized && videoElement) {
-      detectFace();
+      // Wait a bit for video to be fully ready before starting detection
+      const timer = setTimeout(() => {
+        detectFace();
+      }, 500);
+      
+      return () => {
+        clearTimeout(timer);
+        if (animationFrameRef.current) {
+          cancelAnimationFrame(animationFrameRef.current);
+        }
+      };
     }
 
     return () => {

@@ -54,6 +54,10 @@ export default function ARTryOnPage() {
     setSession(prev => ({ ...prev, faceLandmarks }));
   }, [faceLandmarks]);
 
+  const handleVideoRef = useCallback((video: HTMLVideoElement | null) => {
+    setVideoElement(video);
+  }, []);
+
   const handleCategoryChange = useCallback((category: ProductCategory) => {
     setSession(prev => ({
       ...prev,
@@ -118,7 +122,7 @@ export default function ARTryOnPage() {
     <div className="relative w-full h-screen bg-background overflow-hidden" data-testid="ar-try-on-page">
       {/* Camera Feed Background */}
       <CameraFeed 
-        onVideoRef={setVideoElement}
+        onVideoRef={handleVideoRef}
         className="absolute inset-0"
       />
 

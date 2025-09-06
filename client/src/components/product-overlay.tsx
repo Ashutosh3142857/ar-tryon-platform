@@ -30,9 +30,25 @@ export function ProductOverlay({
 
     if (!videoWidth || !videoHeight) return;
 
+    // Default positions based on category (work even without face detection)
     let basePosition = { x: 50, y: 50, width: 20, height: 15 };
 
-    // Position based on category and face landmarks
+    switch (product.category) {
+      case 'jewelry':
+        basePosition = { x: 50, y: 20, width: 15, height: 10 }; // Head/neck area
+        break;
+      case 'shoes':
+        basePosition = { x: 50, y: 85, width: 25, height: 12 }; // Bottom area  
+        break;
+      case 'clothes':
+        basePosition = { x: 50, y: 45, width: 35, height: 45 }; // Torso area
+        break;
+      case 'furniture':
+        basePosition = { x: 30, y: 40, width: 40, height: 35 }; // Background
+        break;
+    }
+
+    // Improve positioning with face landmarks if available
     if (faceLandmarks?.face) {
       const scaleX = videoRect.width / videoWidth;
       const scaleY = videoRect.height / videoHeight;

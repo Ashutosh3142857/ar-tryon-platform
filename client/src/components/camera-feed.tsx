@@ -18,11 +18,13 @@ export function CameraFeed({ onVideoRef, className = '' }: CameraFeedProps) {
   }, [videoRef.current, onVideoRef]);
 
   useEffect(() => {
-    // Don't auto-start camera - let user explicitly request it
+    // Auto-start camera on component mount for better user experience
+    startCamera();
+    
     return () => {
       stopCamera();
     };
-  }, [stopCamera]);
+  }, []);
 
   if (!cameraState.isActive && !cameraState.isLoading) {
     return (
@@ -98,8 +100,8 @@ export function CameraFeed({ onVideoRef, className = '' }: CameraFeedProps) {
       <div className={`camera-feed flex items-center justify-center ${className}`} data-testid="camera-loading">
         <div className="text-center text-white/60">
           <div className="animate-spin rounded-full h-12 w-12 border-4 border-primary border-t-transparent mx-auto mb-4"></div>
-          <p className="text-lg font-light">Initializing Camera...</p>
-          <p className="text-sm mt-2">Please allow camera access</p>
+          <p className="text-lg font-light">Starting Camera...</p>
+          <p className="text-sm mt-2">Setting up video feed</p>
         </div>
       </div>
     );
@@ -109,12 +111,18 @@ export function CameraFeed({ onVideoRef, className = '' }: CameraFeedProps) {
     <div className={`relative ${className}`} data-testid="camera-feed-active">
       <video
         ref={videoRef}
-        className="w-full h-full object-cover"
+        className="w-full h-full"
         playsInline
         muted
         autoPlay
         controls={false}
         data-testid="camera-video"
+        style={{
+          width: '100%',
+          height: '100%',
+          objectFit: 'cover',
+          transform: 'scaleX(-1)' // Mirror for selfie mode
+        }}
       />
       
       {/* Camera Controls */}
