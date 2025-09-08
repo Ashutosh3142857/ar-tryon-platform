@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { Product, AROverlay, FaceLandmarks, ProductCategory } from '@/types/ar-types';
+import { AdvancedFaceLandmarks } from '@/lib/advanced-face-detection';
 
 interface ProductOverlayProps {
   product: Product | null;
-  faceLandmarks: FaceLandmarks | null;
+  faceLandmarks: any | null; // Support both landmark types
   overlay: AROverlay | null;
   onOverlayChange: (overlay: AROverlay | null) => void;
   videoElement: HTMLVideoElement | null;
@@ -17,6 +18,9 @@ export function ProductOverlay({
   videoElement 
 }: ProductOverlayProps) {
   const [overlayStyle, setOverlayStyle] = useState<React.CSSProperties>({});
+  const [dynamicLighting, setDynamicLighting] = useState({ brightness: 1, contrast: 1, saturation: 1 });
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const animationRef = useRef<number>();
 
   useEffect(() => {
     if (!product || !videoElement) {
@@ -41,22 +45,41 @@ export function ProductOverlay({
         basePosition = { x: 50, y: 85, width: 25, height: 12 }; // Bottom area  
         break;
       case 'clothes':
-        basePosition = { x: 50, y: 45, width: 35, height: 45 }; // Torso area
+        basePosition = { x: 50, y: 55, width: 60, height: 75 }; // Much larger to cover torso properly
         break;
       case 'furniture':
         basePosition = { x: 30, y: 40, width: 40, height: 35 }; // Background
         break;
     }
 
-    // Improve positioning with face landmarks if available
-    if (faceLandmarks?.face) {
+    // Improve positioning with advanced face landmarks if available
+    if (faceLandmarks) {
       const scaleX = videoRect.width / videoWidth;
       const scaleY = videoRect.height / videoHeight;
 
-      const faceX = faceLandmarks.face.x * scaleX;
-      const faceY = faceLandmarks.face.y * scaleY;
-      const faceWidth = faceLandmarks.face.width * scaleX;
-      const faceHeight = faceLandmarks.face.height * scaleY;
+      let faceX, faceY, faceWidth, faceHeight;
+
+      // Check if this is advanced landmarks (with faceGeometry) or basic landmarks
+      if (faceLandmarks.faceGeometry) {
+        // Advanced face landmarks
+        const center = faceLandmarks.faceGeometry.center;
+        faceX = center.x * scaleX;
+        faceY = center.y * scaleY;
+        faceWidth = faceLandmarks.faceGeometry.width * scaleX;
+        faceHeight = faceLandmarks.faceGeometry.height * scaleY;
+      } else if (faceLandmarks.face) {
+        // Basic face landmarks
+        faceX = faceLandmarks.face.x * scaleX;
+        faceY = faceLandmarks.face.y * scaleY;
+        faceWidth = faceLandmarks.face.width * scaleX;
+        faceHeight = faceLandmarks.face.height * scaleY;
+      } else {
+        // Fallback to default positioning
+        faceX = videoRect.width / 2;
+        faceY = videoRect.height / 2;
+        faceWidth = videoRect.width * 0.3;
+        faceHeight = videoRect.height * 0.4;
+      }
 
       switch (product.category) {
         case 'jewelry':
@@ -95,11 +118,12 @@ export function ProductOverlay({
           break;
 
         case 'clothes':
+          // Position clothes to cover the entire torso area properly
           basePosition = {
-            x: ((faceX - faceWidth * 0.3) / videoRect.width) * 100,
-            y: ((faceY + faceHeight * 0.5) / videoRect.height) * 100,
-            width: (faceWidth * 1.6 / videoRect.width) * 100,
-            height: (faceHeight * 2 / videoRect.height) * 100
+            x: ((faceX) / videoRect.width) * 100, // Center on face x-position
+            y: ((faceY + faceHeight * 0.7) / videoRect.height) * 100, // Start below the face
+            width: Math.max(45, (faceWidth * 2.5 / videoRect.width) * 100), // Much wider to cover shoulders and torso
+            height: Math.max(55, (faceHeight * 3.5 / videoRect.height) * 100) // Taller to cover full torso area
           };
           break;
 
@@ -151,6 +175,66 @@ export function ProductOverlay({
     }
   }, [product, faceLandmarks, overlay, videoElement, onOverlayChange]);
 
+  // Dynamic lighting adaptation based on video feed
+  useEffect(() => {
+    if (!videoElement || !product) return;
+
+    const adaptLighting = () => {
+      if (!canvasRef.current) return;
+
+      const canvas = canvasRef.current;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+
+      canvas.width = 100;
+      canvas.height = 100;
+      
+      // Sample the video frame
+      try {
+        ctx.drawImage(videoElement, 0, 0, 100, 100);
+        const imageData = ctx.getImageData(0, 0, 100, 100);
+        
+        // Calculate lighting metrics
+        let totalBrightness = 0;
+        let rTotal = 0, gTotal = 0, bTotal = 0;
+        
+        for (let i = 0; i < imageData.data.length; i += 4) {
+          const r = imageData.data[i];
+          const g = imageData.data[i + 1];
+          const b = imageData.data[i + 2];
+          
+          totalBrightness += (r + g + b) / 3;
+          rTotal += r;
+          gTotal += g;
+          bTotal += b;
+        }
+        
+        const pixelCount = imageData.data.length / 4;
+        const avgBrightness = totalBrightness / pixelCount;
+        const avgR = rTotal / pixelCount;
+        const avgG = gTotal / pixelCount;
+        const avgB = bTotal / pixelCount;
+        
+        // Adapt lighting based on scene
+        const brightness = Math.max(0.7, Math.min(1.3, avgBrightness / 128));
+        const contrast = avgBrightness < 100 ? 1.1 : 0.95;
+        
+        // Color temperature adaptation
+        const colorTemp = (avgR + avgG + avgB) / 3;
+        const saturation = colorTemp > 150 ? 1.1 : 0.9;
+        
+        setDynamicLighting({ brightness, contrast, saturation });
+      } catch (error) {
+        // Fallback values
+        setDynamicLighting({ brightness: 1, contrast: 1, saturation: 1 });
+      }
+    };
+
+    // Update lighting every 500ms
+    const interval = setInterval(adaptLighting, 500);
+    return () => clearInterval(interval);
+  }, [videoElement, product]);
+
   if (!product || !product.overlayImageUrl) {
     return null;
   }
@@ -161,15 +245,40 @@ export function ProductOverlay({
       style={overlayStyle}
       data-testid={`product-overlay-${product.id}`}
     >
+      {/* Hidden canvas for lighting analysis */}
+      <canvas ref={canvasRef} style={{ display: 'none' }} />
+      
       <img
         src={product.overlayImageUrl}
         alt={`${product.name} AR overlay`}
         className="w-full h-full object-contain"
         style={{
-          filter: 'drop-shadow(0 4px 8px rgba(0, 0, 0, 0.3))',
+          filter: `
+            brightness(${dynamicLighting.brightness}) 
+            contrast(${dynamicLighting.contrast}) 
+            saturate(${dynamicLighting.saturation})
+            drop-shadow(0 4px 8px rgba(0, 0, 0, 0.3))
+          `,
+          mixBlendMode: product.category === 'clothes' ? 'normal' : 'normal',
+          objectFit: 'cover'
         }}
         draggable={false}
       />
+      
+      {/* Advanced AR visualization for debugging (only in development) */}
+      {process.env.NODE_ENV === 'development' && faceLandmarks?.faceGeometry && (
+        <div 
+          className="absolute inset-0 pointer-events-none"
+          style={{
+            border: '1px solid rgba(0, 255, 0, 0.3)',
+            background: 'rgba(0, 255, 0, 0.05)'
+          }}
+        >
+          <div className="absolute top-0 left-0 text-xs text-green-400 bg-black/50 px-1">
+            Confidence: {Math.round(faceLandmarks.confidence * 100)}%
+          </div>
+        </div>
+      )}
     </div>
   );
 }

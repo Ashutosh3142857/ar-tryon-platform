@@ -53,5 +53,5 @@ export interface ARSession {
   isRecording: boolean;
   showGrid: boolean;
   showControls: boolean;
-  faceLandmarks: FaceLandmarks | null;
+  faceLandmarks: any | null; // Allow both FaceLandmarks and AdvancedFaceLandmarks
 }

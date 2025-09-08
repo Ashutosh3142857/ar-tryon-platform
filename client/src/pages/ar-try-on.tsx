@@ -8,6 +8,7 @@ import { ProductCarousel } from '@/components/product-carousel';
 import { PositioningControls } from '@/components/positioning-controls';
 import { ARGrid } from '@/components/ar-grid';
 import { useFaceDetection } from '@/hooks/use-face-detection';
+import { useAdvancedAR } from '@/hooks/use-advanced-ar';
 import { useToast } from '@/hooks/use-toast';
 import { Product, ProductCategory, AROverlay, ARSession } from '@/types/ar-types';
 import { useCamera } from '@/hooks/use-camera';
@@ -34,6 +35,13 @@ export default function ARTryOnPage() {
     !!videoElement
   );
 
+  const {
+    arState,
+    performanceMetrics,
+    getTrackingQuality,
+    calculateProductPlacement
+  } = useAdvancedAR(videoElement);
+
   // Get tenant slug from URL params
   const tenantSlug = params.tenantSlug || 'demo'; // Default to demo tenant for backward compatibility
 
@@ -49,10 +57,20 @@ export default function ARTryOnPage() {
     enabled: !!tenantSlug && !!session.activeCategory,
   });
 
-  // Update session with face landmarks
+  // Update session with face landmarks and advanced AR state
   useEffect(() => {
-    setSession(prev => ({ ...prev, faceLandmarks }));
-  }, [faceLandmarks]);
+    setSession(prev => ({ 
+      ...prev, 
+      faceLandmarks: arState.faceLandmarks || faceLandmarks 
+    }));
+  }, [faceLandmarks, arState.faceLandmarks]);
+
+  // Calculate product placement when product or face landmarks change
+  useEffect(() => {
+    if (session.selectedProduct && arState.faceLandmarks) {
+      calculateProductPlacement(session.selectedProduct, session.activeCategory);
+    }
+  }, [session.selectedProduct, arState.faceLandmarks, session.activeCategory, calculateProductPlacement]);
 
   const handleVideoRef = useCallback((video: HTMLVideoElement | null) => {
     setVideoElement(video);
@@ -152,7 +170,22 @@ export default function ARTryOnPage() {
           </Button>
           
           <div className="floating-control rounded-full px-4 py-2">
-            <span className="text-white text-sm font-medium">AR Try-On</span>
+            <div className="text-center">
+              <span className="text-white text-sm font-medium">AR Try-On</span>
+              {arState.isTracking && (
+                <div className="flex items-center gap-2 mt-1">
+                  <div className={`w-2 h-2 rounded-full ${
+                    getTrackingQuality() === 'excellent' ? 'bg-green-400' :
+                    getTrackingQuality() === 'good' ? 'bg-yellow-400' :
+                    getTrackingQuality() === 'fair' ? 'bg-orange-400' :
+                    'bg-red-400'
+                  }`} />
+                  <span className="text-white text-xs">
+                    {arState.frameRate}fps | {Math.round(arState.trackingConfidence * 100)}%
+                  </span>
+                </div>
+              )}
+            </div>
           </div>
           
           <div className="flex gap-2">
@@ -210,12 +243,22 @@ export default function ARTryOnPage() {
       </div>
 
       {/* Loading/Error States */}
-      {!isInitialized && videoElement && (
+      {(!isInitialized || !arState.isInitialized) && videoElement && (
         <div className="absolute inset-0 z-60 bg-background/90 backdrop-blur-sm flex items-center justify-center" data-testid="face-detection-loading">
           <div className="text-center">
             <div className="animate-spin rounded-full h-12 w-12 border-4 border-primary border-t-transparent mx-auto mb-4"></div>
-            <p className="text-foreground/80 text-lg font-medium">Initializing Face Detection...</p>
-            <p className="text-muted-foreground text-sm mt-2">Loading AI models</p>
+            <p className="text-foreground/80 text-lg font-medium">
+              {!arState.isInitialized ? 'Initializing Advanced AR...' : 'Initializing Face Detection...'}
+            </p>
+            <p className="text-muted-foreground text-sm mt-2">
+              {!arState.isInitialized ? 'Loading 3D mesh and MediaPipe models' : 'Loading AI models'}
+            </p>
+            {arState.isInitialized && (
+              <div className="mt-4 space-y-1">
+                <p className="text-xs text-muted-foreground">Advanced AR: Ready</p>
+                <p className="text-xs text-muted-foreground">Performance: {performanceMetrics.averageFrameTime.toFixed(1)}ms avg</p>
+              </div>
+            )}
           </div>
         </div>
       )}
